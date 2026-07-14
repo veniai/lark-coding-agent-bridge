@@ -112,10 +112,12 @@ export interface CommandContext {
   msg: NormalizedMessage;
   /**
    * Session scope string. For p2p / regular group it equals `msg.chatId`;
-   * for topic groups it's `${chatId}:${threadId}` (so each topic gets its
-   * own session / cwd / active-run). All handlers should read/write
-   * session / workspace / activeRuns through this — never through
-   * `msg.chatId` directly.
+   * for topic groups it's `${chatId}:${threadId}` (so each topic gets its own
+   * session / active-run / pending queue). session / activeRuns are always
+   * read/written through this scope. cwd differs in topic groups: it is shared
+   * at the group (chatId) level, so read via `workspaces.cwdForScope` and write
+   * via `workspaces.setCwdForScope` — both map the topic scope to its group
+   * chatId. Never bypass those with raw `msg.chatId` or `setCwd(scope, …)`.
    */
   scope: string;
   /** Resolved chat mode for `msg.chatId`. Used by /status to surface the
@@ -341,6 +343,7 @@ async function handleNewChat(rawName: string, ctx: CommandContext): Promise<void
       channel: ctx.channel,
       name,
       inviteOpenId: ctx.msg.senderId,
+      topic: true,
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -354,10 +357,10 @@ async function handleNewChat(rawName: string, ctx: CommandContext): Promise<void
     ctx.workspaces.setCwd(created.chatId, sourceCwd);
   }
 
-  // Welcome the user inside the new group with a hint about how to start.
+  // Welcome the user inside the new TOPIC group with a hint about how to start.
   const welcome = sourceCwd
-    ? `🎉 群已建好，cwd 继承自原群：\`${sourceCwd}\`\n\n@我 + 任意消息开始对话。`
-    : '🎉 群已建好。\n\n@我 + 任意消息开始对话。';
+    ? `🎉 话题群已建好，工作区继承自原群：\`${sourceCwd}\`\n\n• 点右侧 ➕ 建话题开始会话\n• 在任意话题里 \`/cd <path>\` 设置项目工作区（全群共用）`
+    : '🎉 话题群已建好。\n\n• 点右侧 ➕ 建话题开始会话\n• 在任意话题里 `/cd <path>` 设置项目工作区（全群共用）';
   try {
     await ctx.channel.send(created.chatId, { markdown: welcome });
   } catch (err) {
@@ -387,9 +390,16 @@ async function handleCd(args: string, ctx: CommandContext): Promise<void> {
     return;
   }
   ctx.activeRuns.interrupt(ctx.scope);
-  ctx.workspaces.setCwd(ctx.scope, workspace.cwdRealpath);
+  // setCwdForScope writes the group (chatId) cwd in topic mode — every topic
+  // shares it via cwdForScope. (Session/run stay per-topic; cleared below.)
+  ctx.workspaces.setCwdForScope(ctx.scope, workspace.cwdRealpath);
   ctx.sessions.clear(ctx.scope);
-  await reply(ctx, `✓ 已切换 cwd 到 \`${workspace.cwdRealpath}\`\n（session 已重置）`);
+  await reply(
+    ctx,
+    ctx.chatMode === 'topic'
+      ? `✓ 已设置本群工作目录（所有话题共用）：\`${workspace.cwdRealpath}\`\n（当前话题 session 已重置）`
+      : `✓ 已切换 cwd 到 \`${workspace.cwdRealpath}\`\n（session 已重置）`,
+  );
 }
 
 async function handleWs(args: string, ctx: CommandContext): Promise<void> {
@@ -452,7 +462,7 @@ async function handleWsUse(name: string, ctx: CommandContext): Promise<void> {
     return;
   }
   ctx.activeRuns.interrupt(ctx.scope);
-  ctx.workspaces.setCwd(ctx.scope, workspace.cwdRealpath);
+  ctx.workspaces.setCwdForScope(ctx.scope, workspace.cwdRealpath);
   ctx.sessions.clear(ctx.scope);
   await reply(ctx, `✓ 已切换到 \`${name}\` (${workspace.cwdRealpath})\n（session 已重置）`);
 }
@@ -541,8 +551,11 @@ async function handleResume(args: string, ctx: CommandContext): Promise<void> {
     return;
   }
 
-  if (ctx.chatMode !== 'p2p') {
-    await reply(ctx, '群聊中不展示历史会话详情。请私聊 bot 使用 `/resume` 查看和选择历史会话。');
+  // /resume is allowed in p2p and in topic-group topics (each topic is its own
+  // session slot). Regular groups stay blocked — the history card would be noisy
+  // to all members and topics didn't exist as a session unit there.
+  if (ctx.chatMode === 'group') {
+    await reply(ctx, '群聊中不展示历史会话详情。请私聊或在话题群里的话题中使用 `/resume`。');
     return;
   }
 
@@ -741,7 +754,7 @@ async function listCodexResumeHistory(
 }
 
 function effectiveWorkspaceCwd(ctx: CommandContext): string | undefined {
-  return ctx.workspaces.cwdFor(ctx.scope) ?? ctx.controls.profileConfig.workspaces.default;
+  return ctx.workspaces.cwdForScope(ctx.scope) ?? ctx.controls.profileConfig.workspaces.default;
 }
 
 function selectedResumeCwd(ctx: CommandContext): string | undefined {

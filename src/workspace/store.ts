@@ -35,6 +35,41 @@ export class WorkspaceStore {
     return this.data.chats[chatId]?.cwd;
   }
 
+  /**
+   * Derive the cwd storage key for a session scope. A topic-group topic has scope
+   * `${chatId}:${threadId}` (chatId is `oc_`-prefixed); all topics in a group share
+   * ONE project workspace stored at the chatId level, so the topic scope maps to its
+   * group (chatId) key. Bare chatId and doc-comment (`comment:…`) scopes map to
+   * themselves. Shared by {@link cwdForScope} (read) and {@link setCwdForScope}
+   * (write) so writers and readers can never drift onto different keys.
+   */
+  private groupKeyForScope(scope: string): string {
+    if (scope.startsWith('oc_')) {
+      const colon = scope.indexOf(':');
+      if (colon > 0) return scope.slice(0, colon);
+    }
+    return scope;
+  }
+
+  /**
+   * Resolve cwd by session scope. Topic scopes resolve to their group (chatId) cwd;
+   * there is intentionally NO per-topic cwd layer (one project = one workspace).
+   * Returns undefined when nothing is set; callers add `?? profileConfig.workspaces.default`.
+   */
+  cwdForScope(scope: string): string | undefined {
+    return this.cwdFor(this.groupKeyForScope(scope));
+  }
+
+  /**
+   * Set cwd keyed by session scope, mirroring {@link cwdForScope}: a topic scope
+   * writes the group (chatId) cwd every topic shares; any other scope writes its
+   * own entry. Use this (not raw `setCwd(scope, …)`) so writes match what
+   * `cwdForScope` reads.
+   */
+  setCwdForScope(scope: string, cwd: string): void {
+    this.setCwd(this.groupKeyForScope(scope), cwd);
+  }
+
   setCwd(chatId: string, cwd: string): void {
     this.data.chats[chatId] = { cwd };
     this.schedulePersist();

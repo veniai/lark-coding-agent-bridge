@@ -78,6 +78,22 @@ describe('Claude slash command visible behavior', () => {
     expect(h.sessions.getRaw('chat-1')).toBeUndefined();
   });
 
+  it('/new chat creates a TOPIC group and welcomes with topic-group guidance', async () => {
+    const h = await createHarness();
+    h.workspaces.setCwd('chat-1', h.tmp.workspace);
+
+    await expect(h.run('/new chat myproj')).resolves.toBe(true);
+
+    expect(h.channel.createdChats).toHaveLength(1);
+    expect(h.channel.createdChats[0]).toMatchObject({ chatMode: 'topic' });
+    const welcome = h.channel.sent
+      .map((m) => (m.content as { markdown?: string }).markdown)
+      .find((md): md is string => typeof md === 'string' && md.includes('话题群'));
+    expect(welcome).toBeTruthy();
+    expect(welcome).toContain('建话题');
+    expect(welcome).toContain('/cd');
+  });
+
   it('handles /ws list, save, use, and remove', async () => {
     const h = await createHarness();
     h.workspaces.setCwd('chat-1', h.tmp.workspace);

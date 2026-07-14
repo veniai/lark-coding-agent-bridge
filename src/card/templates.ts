@@ -88,11 +88,11 @@ export function statusCard(info: StatusInfo): object {
   const sessionLine = info.sessionId
     ? `\`${info.sessionId.slice(0, 8)}…\`${info.sessionStale ? ' ⚠️ 旧 cwd，下一条会新建' : ''}`
     : (info.emptySessionText ?? '(无)');
-  // For topic groups, surface that the scope is per-topic so the user
-  // knows /cd / /new only affect this topic.
+  // For topic groups, surface that the scope is per-topic (session/run) so the
+  // user knows /new only resets this topic; /cd sets the group-wide project cwd.
   const scopeLine =
     info.chatMode === 'topic'
-      ? `\`${escapeCode(info.scope)}\` _（话题独立 session）_`
+      ? `\`${escapeCode(info.scope)}\` _（话题独立 session；cwd 全群共用）_`
       : `\`${escapeCode(info.scope)}\``;
   const cwdLine = info.cwd ? `\`${escapeCode(info.cwd)}\`` : '(未设置)';
   const queueLine = info.queue

@@ -20,6 +20,8 @@ export interface FakeRawClientRequest {
 export interface FakeChannel {
   readonly sent: FakeChannelMessage[];
   readonly streams: FakeChannelStream[];
+  /** `createChat` opts the fake channel has received (for /new chat assertions). */
+  readonly createdChats: unknown[];
   /**
    * Maps a messageId to the `thread_id` that `fetchRawMessage` should report
    * for it — mirrors the raw `im.v1.message.get` items[0].thread_id that the
@@ -52,16 +54,19 @@ export interface FakeChannel {
   updateCardById(cardId: string, cardJson: unknown, sequence: number): Promise<void>;
   send(chatId: string, content: unknown, options?: unknown): Promise<{ messageId: string }>;
   stream(chatId: string, input: unknown, options?: unknown): Promise<void>;
+  createChat(opts: unknown): Promise<{ chatId: string }>;
 }
 
 export function createFakeChannel(): FakeChannel {
   const sent: FakeChannelMessage[] = [];
   const streams: FakeChannelStream[] = [];
+  const createdChats: unknown[] = [];
   const requests: FakeRawClientRequest[] = [];
   const rawThreadIds = new Map<string, string>();
   const cardById = new Map<string, unknown>();
   let nextCard = 1;
   let nextMessage = 1;
+  let nextChat = 1;
 
   const pushManagedCardMessage = (params: unknown, fallbackChatId: string): { message_id: string } => {
     requests.push({ method: 'im.v1.message.create', params });
@@ -77,6 +82,7 @@ export function createFakeChannel(): FakeChannel {
   return {
     sent,
     streams,
+    createdChats,
     rawThreadIds,
     async fetchRawMessage(messageId: string): Promise<Array<{ thread_id?: string }>> {
       const threadId = rawThreadIds.get(messageId);
@@ -120,6 +126,10 @@ export function createFakeChannel(): FakeChannel {
           },
         },
       },
+    },
+    async createChat(opts: unknown): Promise<{ chatId: string }> {
+      createdChats.push(opts);
+      return { chatId: `oc_fake_${nextChat++}` };
     },
     async createCard(cardJson: unknown): Promise<{ cardId: string }> {
       const cardId = `card_fake_${nextCard++}`;

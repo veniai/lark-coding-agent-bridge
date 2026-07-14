@@ -7,8 +7,10 @@ import type { ChatModeCache } from './chat-mode-cache';
  *  - **p2p / group**: scope = `chatId`. Replies in regular groups thread the
  *    UI but share the chat's session (matches user expectation).
  *  - **topic group**: scope = `${chatId}:${threadId}` — each topic is an
- *    independent conversation with its own session / cwd / pending queue.
- *    Topic-group top-level messages (no threadId, rare) fall back to chatId.
+ *    independent conversation with its own session / pending queue; cwd is
+ *    shared at the group (chatId) level across all topics (see
+ *    `WorkspaceStore.cwdForScope`). Topic-group top-level messages (no
+ *    threadId, rare) fall back to chatId.
  *
  * Async because chat mode requires an API lookup (cached after first hit).
  * Callers typically await this once at intake/cardAction entry and pass
