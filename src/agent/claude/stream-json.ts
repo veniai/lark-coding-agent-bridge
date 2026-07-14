@@ -25,6 +25,9 @@ interface ClaudeRawEvent {
     cache_read_input_tokens?: number;
   };
   total_cost_usd?: number;
+  /** Fields on `system` events carrying transient API state (e.g. api_retry). */
+  attempt?: number;
+  max_retries?: number;
 }
 
 export function* translateEvent(raw: unknown): Generator<AgentEvent> {
@@ -37,6 +40,15 @@ export function* translateEvent(raw: unknown): Generator<AgentEvent> {
       sessionId: evt.session_id,
       cwd: evt.cwd,
       model: evt.model,
+    };
+    return;
+  }
+
+  if (evt.type === 'system' && evt.subtype === 'api_retry') {
+    yield {
+      type: 'retry',
+      attempt: evt.attempt ?? 0,
+      maxRetries: evt.max_retries ?? 0,
     };
     return;
   }

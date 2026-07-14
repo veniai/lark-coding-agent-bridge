@@ -14,7 +14,7 @@ export type Block =
   | { kind: 'text'; content: string; streaming: boolean }
   | { kind: 'tool'; tool: ToolEntry };
 
-export type FooterStatus = 'thinking' | 'tool_running' | 'streaming' | null;
+export type FooterStatus = 'thinking' | 'tool_running' | 'streaming' | 'retrying' | null;
 export type Terminal = 'running' | 'done' | 'interrupted' | 'error' | 'idle_timeout';
 
 export interface RunState {
@@ -26,6 +26,9 @@ export interface RunState {
   /** Set when terminal === 'idle_timeout' — how long claude was idle before
    * the watchdog gave up (so the message can say "N 分钟无响应"). */
   idleTimeoutMinutes?: number;
+  /** Active while the agent is retrying a transient API error (e.g. 529).
+   * Drives the "模型繁忙,重试中" hint; read only while footer === 'retrying'. */
+  retry: { attempt: number; maxRetries: number } | null;
 }
 
 export const initialState: RunState = {
@@ -33,6 +36,7 @@ export const initialState: RunState = {
   reasoning: { content: '', active: false },
   footer: 'thinking',
   terminal: 'running',
+  retry: null,
 };
 
 function closeStreamingText(blocks: Block[]): Block[] {
@@ -43,6 +47,13 @@ function closeStreamingText(blocks: Block[]): Block[] {
 
 export function reduce(state: RunState, evt: AgentEvent): RunState {
   switch (evt.type) {
+    case 'retry': {
+      return {
+        ...state,
+        retry: { attempt: evt.attempt, maxRetries: evt.maxRetries },
+        footer: 'retrying',
+      };
+    }
     case 'text': {
       const last = state.blocks[state.blocks.length - 1];
       if (last && last.kind === 'text' && last.streaming) {
@@ -52,6 +63,7 @@ export function reduce(state: RunState, evt: AgentEvent): RunState {
           blocks: [...state.blocks.slice(0, -1), next],
           reasoning: { ...state.reasoning, active: false },
           footer: 'streaming',
+          retry: null,
         };
       }
       return {
@@ -59,6 +71,7 @@ export function reduce(state: RunState, evt: AgentEvent): RunState {
         blocks: [...state.blocks, { kind: 'text', content: evt.delta, streaming: true }],
         reasoning: { ...state.reasoning, active: false },
         footer: 'streaming',
+        retry: null,
       };
     }
 
@@ -67,6 +80,7 @@ export function reduce(state: RunState, evt: AgentEvent): RunState {
         ...state,
         reasoning: { content: state.reasoning.content + evt.delta, active: true },
         footer: 'thinking',
+        retry: null,
       };
     }
 
@@ -82,6 +96,7 @@ export function reduce(state: RunState, evt: AgentEvent): RunState {
         blocks: [...closeStreamingText(state.blocks), { kind: 'tool', tool }],
         reasoning: { ...state.reasoning, active: false },
         footer: 'tool_running',
+        retry: null,
       };
     }
 
@@ -97,7 +112,12 @@ export function reduce(state: RunState, evt: AgentEvent): RunState {
           },
         };
       });
-      return { ...state, blocks };
+      return {
+        ...state,
+        blocks,
+        retry: null,
+        footer: state.footer === 'retrying' ? 'thinking' : state.footer,
+      };
     }
 
     case 'error': {
@@ -112,6 +132,7 @@ export function reduce(state: RunState, evt: AgentEvent): RunState {
         terminal,
         errorMsg: terminal === 'error' ? evt.message : state.errorMsg,
         footer: null,
+        retry: null,
       };
     }
 
@@ -128,6 +149,7 @@ export function reduce(state: RunState, evt: AgentEvent): RunState {
         reasoning: { ...state.reasoning, active: false },
         terminal,
         footer: null,
+        retry: null,
       };
     }
 
@@ -143,6 +165,7 @@ export function markInterrupted(state: RunState): RunState {
     reasoning: { ...state.reasoning, active: false },
     terminal: 'interrupted',
     footer: null,
+    retry: null,
   };
 }
 
@@ -154,6 +177,7 @@ export function markIdleTimeout(state: RunState, minutes: number): RunState {
     terminal: 'idle_timeout',
     footer: null,
     idleTimeoutMinutes: minutes,
+    retry: null,
   };
 }
 
@@ -165,5 +189,6 @@ export function finalizeIfRunning(state: RunState): RunState {
     reasoning: { ...state.reasoning, active: false },
     terminal: 'done',
     footer: null,
+    retry: null,
   };
 }

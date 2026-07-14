@@ -47,7 +47,7 @@ export function renderCard(state: RunState, options: RunCardRenderOptions = {}):
   }
 
   if (state.terminal === 'running') {
-    if (state.footer) elements.push(footerStatus(state.footer));
+    if (state.footer) elements.push(footerStatus(state.footer, state));
     elements.push(stopButton(options));
   }
 
@@ -191,7 +191,11 @@ function stopButton(options: RunCardRenderOptions): object {
   };
 }
 
-function footerStatus(status: Exclude<FooterStatus, null>): object {
+function footerStatus(status: Exclude<FooterStatus, null>, state: RunState): object {
+  if (status === 'retrying' && state.retry) {
+    const max = state.retry.maxRetries > 0 ? `/${state.retry.maxRetries}` : '';
+    return noteMd(`🔄 模型繁忙,自动重试中 (${state.retry.attempt}${max})…`);
+  }
   const text =
     status === 'thinking'
       ? '🧠 正在思考'
@@ -206,6 +210,7 @@ function summaryText(state: RunState): string {
   if (state.terminal === 'idle_timeout') return '已超时';
   if (state.terminal === 'error') return '出错';
   if (state.terminal === 'done') return '已完成';
+  if (state.footer === 'retrying') return '模型繁忙,重试中';
   if (state.footer === 'tool_running') return '正在调用工具';
   if (state.footer === 'streaming') return '正在输出';
   return '思考中';

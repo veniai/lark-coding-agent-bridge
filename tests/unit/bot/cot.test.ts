@@ -74,6 +74,7 @@ describe('COT event mapping', () => {
       reasoning: { content: 'hidden', active: true },
       footer: 'streaming',
       terminal: 'done',
+      retry: null,
     };
 
     expect(finalAnswerOnlyState(state)).toMatchObject({

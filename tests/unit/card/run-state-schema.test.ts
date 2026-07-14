@@ -38,3 +38,33 @@ describe('run state terminal event schema', () => {
     ).toBe('idle_timeout');
   });
 });
+
+describe('run state retry tracking', () => {
+  it('records retry attempt and flags the footer as retrying', () => {
+    const retried = reduce(initialState, {
+      type: 'retry',
+      attempt: 3,
+      maxRetries: 10,
+    });
+    expect(retried.retry).toEqual({ attempt: 3, maxRetries: 10 });
+    expect(retried.footer).toBe('retrying');
+  });
+
+  it('clears retry once normal output resumes', () => {
+    const retried = reduce(initialState, { type: 'retry', attempt: 1, maxRetries: 10 });
+    const resumed = reduce(retried, { type: 'text', delta: 'hi' });
+    expect(resumed.retry).toBeNull();
+  });
+
+  it('migrates footer off retrying when tool_result follows retry', () => {
+    const retried = reduce(initialState, { type: 'retry', attempt: 1, maxRetries: 10 });
+    const afterTool = reduce(retried, {
+      type: 'tool_result',
+      id: 't1',
+      output: 'ok',
+      isError: false,
+    });
+    expect(afterTool.retry).toBeNull();
+    expect(afterTool.footer).not.toBe('retrying');
+  });
+});

@@ -22,6 +22,27 @@ describe('Claude stream-json translator', () => {
     expect([...translateEvent({ type: 'system', subtype: 'init', session_id: 'sess-1' })][0]).not.toHaveProperty('threadId');
   });
 
+  it('translates system api_retry into a retry event', () => {
+    expect([
+      ...translateEvent({
+        type: 'system',
+        subtype: 'api_retry',
+        attempt: 2,
+        max_retries: 10,
+        retry_delay_ms: 1500,
+        error_status: 529,
+        error: 'overloaded',
+        session_id: 'sess-1',
+      }),
+    ]).toEqual([
+      {
+        type: 'retry',
+        attempt: 2,
+        maxRetries: 10,
+      },
+    ]);
+  });
+
   it('translates assistant text, thinking, and tool_use blocks in order', () => {
     expect([
       ...translateEvent({

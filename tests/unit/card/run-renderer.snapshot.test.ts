@@ -70,6 +70,32 @@ describe('run card renderer snapshots', () => {
     expectCard(markIdleTimeout(stateFrom([{ type: 'text', delta: 'partial' }]), 15)).toMatchSnapshot();
   });
 
+  it('renders API retry state and clears it once output resumes', () => {
+    const retryCard = JSON.stringify(renderCard(stateFrom([
+      { type: 'retry', attempt: 3, maxRetries: 10 },
+    ])));
+    expect(retryCard).toContain('模型繁忙,自动重试中 (3/10)');
+
+    const resumedCard = JSON.stringify(renderCard(stateFrom([
+      { type: 'retry', attempt: 3, maxRetries: 10 },
+      { type: 'text', delta: 'recovered' },
+    ])));
+    expect(resumedCard).not.toContain('模型繁忙');
+  });
+
+  it('renders API retry in text mode too (default markdown reply)', () => {
+    const retryText = renderText(stateFrom([
+      { type: 'retry', attempt: 2, maxRetries: 10 },
+    ]));
+    expect(retryText).toContain('模型繁忙,自动重试中 (2/10)');
+
+    const resumedText = renderText(stateFrom([
+      { type: 'retry', attempt: 2, maxRetries: 10 },
+      { type: 'text', delta: 'ok' },
+    ]));
+    expect(resumedText).not.toContain('模型繁忙');
+  });
+
   it('renders markdown text mode without card-only controls', () => {
     const state = stateFrom([
       { type: 'thinking', delta: 'hidden reasoning' },

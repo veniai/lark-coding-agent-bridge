@@ -27,7 +27,7 @@ export function renderText(state: RunState): string {
   } else if (state.terminal === 'error' && state.errorMsg) {
     parts.push(`⚠️ agent 失败:${state.errorMsg}`);
   } else if (state.terminal === 'running' && state.footer) {
-    parts.push(footerLine(state.footer));
+    parts.push(footerLine(state));
   }
 
   return parts.join('\n\n');
@@ -50,7 +50,12 @@ function toolLine(tool: ToolEntry): string {
   return `> ${toolHeaderText(tool)}`;
 }
 
-function footerLine(status: 'thinking' | 'tool_running' | 'streaming'): string {
+function footerLine(state: RunState): string {
+  const status = state.footer;
+  if (status === 'retrying' && state.retry) {
+    const max = state.retry.maxRetries > 0 ? `/${state.retry.maxRetries}` : '';
+    return `_🔄 模型繁忙,自动重试中 (${state.retry.attempt}${max})…_`;
+  }
   if (status === 'thinking') return '_🧠 正在思考…_';
   if (status === 'tool_running') return '_🧰 正在调用工具…_';
   return '_✍️ 正在输出…_';
